@@ -1,0 +1,29 @@
+---
+- name: Deploy and Start Frontend App
+  hosts: dev
+  become: yes
+  become_user: ubuntu
+
+  tasks:
+    - name: Change to the frontend directory
+      ansible.builtin.cd:
+        path: /home/ubuntu/frontend
+
+    - name: Git pull from the develop branch
+      ansible.builtin.git:
+        repo: "https://github.com/your_username/your_frontend_repo.git"
+        dest: /home/ubuntu/frontend
+        version: develop
+        force: yes
+
+    - name: Install Node.js dependencies
+      community.general.npm:
+        path: /home/ubuntu/frontend
+        global: yes
+
+    - name: Start the frontend app with PM2
+      community.general.pm2:
+        name: frontend_combyn
+        script: npm
+        args: start
+        cwd: /home/ubuntu/frontend
