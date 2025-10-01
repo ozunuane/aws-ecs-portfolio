@@ -1,0 +1,204 @@
+name: 'TF-rolling Infrastructure'
+
+on:
+  push:
+    branches:
+      - '*'
+
+jobs:
+  tf-plan:
+    name: 'Terraform plan'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        # working-directory: 
+
+
+    steps:
+      # Checkout the repository to the GitHub Actions runner
+      - name: Checkout
+        uses: actions/checkout@v2
+        jobs:
+          workflow_demo:
+            runs-on: ubuntu-latest
+            steps:
+              - uses: actions/checkout@v2
+        
+      - name: List Versions of ECS With Default Region By KooCLI 
+        uses: huaweicloud/huaweicloud-cli-action@v1.0.1
+        with:
+          access_key: ${{ secrets.ACCESSKEY }}
+          secret_key: ${{ secrets.SECRETACCESSKEY }}
+          region: 'cn-north-4'
+ 
+      # "Configure AWS Credentials" Action For GitHub Actions
+      - name: Get AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY_ID }}
+          role-to-assume: ${{ secrets.DEPLOYMENT_ROLE }}
+          role-duration-seconds: 1200
+          aws-region: us-east-1
+
+      # Install Terraform latest version
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+        # If needed a specific version add block [with]
+        #  with:
+        #    terraform_version: 0.14.6
+
+      - name: Terraform Format
+        id: fmt
+        run: terraform fmt -check -diff
+        continue-on-error: true
+
+      - name: Terraform Init
+        id: init
+        run: terraform init 
+
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate
+
+      # Generates an execution plan for Terraform
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan 
+        continue-on-error: true
+
+      - name: Plan output
+        uses: actions/github-script@v5
+        if: github.event_name == 'pull_request'
+        env:
+          PLAN: "terraform\n${{ steps.plan.outputs.stdout }}"
+          VALIDATE: "terraform\n${{ steps.validate.outputs.stdout }}"
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
+            #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+            #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`hcl
+            ${process.env.PLAN}
+            \`\`\`
+
+            </details>
+
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Workflow: \`${{ github.workflow }}\`*`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
+
+
+  tf-apply-staging:
+    if: github.ref == 'refs/heads/staging'
+    needs: tf-plan
+    name: 'Terraform Apply'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        # working-directory: 
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Get AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY_ID }}
+          role-to-assume: ${{ secrets.DEPLOYMENT_ROLE }}
+          role-duration-seconds: 1200
+          aws-region: us-east-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+
+      - name: Terraform init
+        run: terraform init 
+
+      - name: Terraform apply Staging
+        run: terraform apply --auto-approve
+
+       
+
+  tf-apply-prod:
+    if: github.ref == 'refs/heads/production'
+    needs: tf-plan
+    name: 'Terraform Apply'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        # working-directory: 
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Get AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY_ID }}
+          role-to-assume: ${{ secrets.DEPLOYMENT_ROLE }}
+          role-duration-seconds: 1200
+          aws-region: us-east-1
+
+
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+
+      - name: Terraform init
+        run: terraform init 
+
+      - name: Terraform apply Production
+        run: terraform apply --auto-approve
+
+
+
+
+ 
+  cleanup:
+
+    if: github.ref == 'refs/heads/destroy'
+    needs: tf-plan
+    name: 'Terraform Destroy'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        # working-directory: 
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Get AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY_ID }}
+          role-to-assume: ${{ secrets.DEPLOYMENT_ROLE }}
+          role-duration-seconds: 1200
+          aws-region: us-east-1
+
+
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+
+      - name: Terraform init
+        run: terraform init 
+
+      - name: Terraform apply destroy
+        run: terraform destroy --auto-approve
